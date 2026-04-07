@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>StreetGuess PRO - Multi joueur</title>
+<style>
+body { margin:0; font-family:Arial; background:#0f172a; color:#fff; text-align:center; }
+h1,h2,h3 { margin:10px; }
+#menu, #game { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; }
+button { padding:12px 20px; margin:10px; border:none; border-radius:10px; cursor:pointer; background:#22c55e; color:#000; font-weight:bold; }
+input { padding:10px; border-radius:10px; border:none; }
+#game { display:none; }
+#map { height:300px; width:85%; margin-top:10px; border-radius:10px; }
+iframe { width:85%; height:400px; border:none; border-radius:12px; margin-top:10px; }
+#result { font-size:20px; margin-top:10px; }
+#timer { font-size:18px; color:#facc15; }
+</style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+</head>
+<body>
+
+<div id="menu">
+<h1>🌍 StreetGuess PRO - Multi joueur</h1>
+<button onclick="createGame()">Créer une partie</button>
+<div id="result"></div>
+
+<h3>Ou rejoindre une partie</h3>
+<input id="joinCode" placeholder="Entrez le code de la partie">
+<button onclick="joinGame()">Rejoindre</button>
+</div>
+
+<div id="game">
+<h2 id="codeDisplay"></h2>
+<div id="timer">Temps : 60</div>
+<iframe id="streetView"></iframe>
+<div id="map"></div>
+<button onclick="validateGuess()">Valider</button>
+<h3 id="resultText"></h3>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+let realLat, realLng;
+let guessLat, guessLng;
+let map, marker;
+let timeLeft = 60;
+let timerInterval;
+
+// Génère un code aléatoire
+function generateCode() {
+  return Math.random().toString(36).substring(2,8).toUpperCase();
+}
+
+// Crée une partie à distance
+function createGame() {
+  realLat = (Math.random()*180)-90;
+  realLng = (Math.random()*360)-180;
+
+  const code = generateCode();
+  const encoded = btoa(realLat + "," + realLng);
+
+  const link = window.location.origin + window.location.pathname + "?game=" + code + "&data=" + encoded;
+
+  document.getElementById("result").innerHTML = 
+    "<b>Copiez ce lien et envoyez-le :</b><br>" +
+    "<input style='width:80%' value='" + link + "' onclick='this.select()'><br>" +
+    "<b>Ou utilisez le code :</b> " + code;
+}
+
+// Rejoindre avec un code
+function joinGame() {
+  const codeInput = document.getElementById("joinCode").value.trim();
+  if(!codeInput){
+    alert("Entrez un code valide !");
+    return;
+  }
+  alert("Pour rejoindre, ouvrez le lien envoyé par votre ami contenant ce code. \nLe bouton rejoindre seul ne peut pas générer la partie.");
+}
+
+// Auto join depuis le lien
+window.onload = function() {
+  const params = new URLSearchParams(window.location.search);
+  const data = params.get("data");
+  const code = params.get("game");
+
+  if(data && code){
+    const decoded = atob(data).split(",");
+    realLat = parseFloat(decoded[0]);
+    realLng = parseFloat(decoded[1]);
+
+    document.getElementById("menu").style.display = "none";
+    document.getElementById("game").style.display = "flex";
+    document.getElementById("codeDisplay").innerText = "Partie : " + code;
+
+    loadStreetView();
+    initMap();
+    startTimer();
+  }
+}
+
+// Charge Street View
+function loadStreetView(){
+  const iframe = document.getElementById("streetView");
+  iframe.src = `https://www.google.com/maps?q=&layer=c&cbll=${realLat},${realLng}`;
+}
+
+// Initialise la carte Leaflet
+function initMap(){
+  map = L.map('map').setView([20,0], 2);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(map);
+
+  map.on('click', function(e){
+    guessLat = e.latlng.lat;
+    guessLng = e.latlng.lng;
+    if(marker) map.removeLayer(marker);
+    marker = L.marker([guessLat, guessLng]).addTo(map);
+  });
+}
+
+// Timer
+function startTimer(){
+  timeLeft = 60;
+  timerInterval = setInterval(()=>{
+    timeLeft--;
+    document.getElementById("timer").innerText = "Temps : " + timeLeft;
+    if(timeLeft <= 0){
+      clearInterval(timerInterval);
+      validateGuess();
+    }
+  }, 1000);
+}
+
+// Calcul distance
+function getDistance(lat1, lon1, lat2, lon2){
+  const R = 6371;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return 2*R*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Valider le point
+function validateGuess(){
+  clearInterval(timerInterval);
+  if(!guessLat){
+    alert("Placez un point !");
+    return;
+  }
+  const distance = getDistance(realLat, realLng, guessLat, guessLng);
+  L.marker([realLat, realLng]).addTo(map);
+  const score = Math.max(0, Math.round(5000 - distance));
+  document.getElementById("resultText").innerText = `Distance : ${distance.toFixed(2)} km | Score : ${score}`;
+}
+</script>
+
+</body>
+</html>
